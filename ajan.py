@@ -4,13 +4,14 @@ import g4f
 from duckduckgo_search import DDGS
 import urllib.parse
 
-# Linki buraya yapıştırırken başında veya sonunda boşluk kalmadığından emin ol
+# Make.com Webhook URL (Linkin sonunda boşluk olmadığından emin ol)
 MAKE_WEBHOOK_URL = "https://hook.eu1.make.com/q2bn0ph88q1qxu841sv9dhau8aql51gc"
 
 def internette_arastirma_yap():
     print("İnternette araştırılıyor...")
     try:
         with DDGS() as ddgs:
+            # Endüstri 4.0 ve Yapay Zeka odaklı güncel haberleri arar
             results = ddgs.news("Endüstri 4.0 yapay zeka üretim yönetimi", region="tr-tr", timelimit="d")
             for r in results:
                 return r['title'], r['body'], r['url']
@@ -19,17 +20,28 @@ def internette_arastirma_yap():
     return None, None, None
 
 def vizyoner_yorum_olustur(baslik, ozet):
-    prompt = f"Sen 'Companies That Value Employees' yöneticisisin. Bu gelişmeyi vizyoner bir dille Türkçe analiz et ve 3 hashtag ekle: {baslik} - {ozet}"
+    print("Vizyoner analiz oluşturuluyor...")
+    prompt = f"""
+    Sen 'Companies That Value Employees' yöneticisi Burak Yaka'sın. 
+    Aşağıdaki gelişmeyi dijital dönüşüm ve Endüstri 4.0 perspektifinden analiz et. 
+    Profesyonel, vizyoner ve çarpıcı bir dil kullan. 
+    Analizini 3 hashtag ile bitir.
+    Haber: {baslik} - {ozet}
+    """
     try:
         response = g4f.ChatCompletion.create(model="gpt-4", messages=[{"role": "user", "content": prompt}])
         return response.strip()
-    except:
+    except Exception as e:
+        print(f"Metin oluşturma hatası: {e}")
         return None
 
 def ucretsiz_resim_uret(baslik):
-    prompt = f"Industrial Industry 4.0, Artificial Intelligence, modern factory, {baslik}"
+    print("Ücretsiz görsel üretiliyor...")
+    # Make.com'un resim olarak algılaması için prompt sonuna .jpg ekliyoruz
+    prompt = f"Industrial Industry 4.0, Artificial Intelligence, high-tech factory, professional digital art, {baslik}"
     encoded_prompt = urllib.parse.quote(prompt)
-    return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&seed=42&model=flux"
+    # nologo ve format zorlaması ile doğrudan resim dosyası döndürülür
+    return f"https://pollinations.ai/p/{encoded_prompt}.jpg?width=1024&height=1024&seed=42&model=flux&nologo=true"
 
 if __name__ == "__main__":
     baslik, ozet, link = internette_arastirma_yap()
@@ -41,21 +53,24 @@ if __name__ == "__main__":
             payload = {
                 "baslik": baslik,
                 "metin": yorum,
-                "resim": resim_linki
+                "resim": resim_linki,
+                "kaynak_link": link
             }
             
-            # .strip() ile linkteki gizli boşlukları temizliyoruz
             clean_url = MAKE_WEBHOOK_URL.strip()
+            print(f"Veri fırlatılıyor: {clean_url}")
             
-            print(f"Veri gönderiliyor: {clean_url}")
             try:
-                response = requests.post(clean_url, json=payload, timeout=10)
+                # 10 saniye timeout ekleyerek sistemin asılı kalmasını önlüyoruz
+                response = requests.post(clean_url, json=payload, timeout=15)
                 print(f"Make.com Yanıt Kodu: {response.status_code}")
                 print(f"Make.com Mesajı: {response.text}")
                 
                 if response.status_code == 200:
-                    print("!!! BAŞARILI: Veri Make.com'a ulaştı. !!!")
+                    print("!!! BAŞARILI: Veri Make.com'a ulaştı ve kabul edildi. !!!")
                 else:
-                    print("Hata: Make.com veriyi kabul etmedi.")
+                    print(f"Hata: Make.com {response.status_code} hatası verdi. Bağlantıları kontrol et.")
             except Exception as e:
-                print(f"Gönderim sırasında teknik hata oluştu: {e}")
+                print(f"Gönderim hatası: {e}")
+    else:
+        print("Bugün yeni bir haber bulunamadı.")
