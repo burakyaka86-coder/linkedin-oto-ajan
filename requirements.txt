@@ -1,3 +1,4 @@
 requests
 duckduckgo-search
 g4f
+python-magic
