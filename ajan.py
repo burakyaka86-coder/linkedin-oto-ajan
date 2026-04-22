@@ -1,12 +1,11 @@
 import os
 import requests
 import feedparser
-import google.generativeai as genai
+from google import genai
 
 LINKEDIN_TOKEN = os.environ.get("LINKEDIN_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Endüstri, Teknoloji ve Yapay Zeka haberleri için örnek bir RSS kaynağı
 RSS_URL = "https://www.donanimhaber.com/rss/teknoloji" 
 
 def get_linkedin_urn():
@@ -26,8 +25,8 @@ def get_latest_news():
     return None, None, None
 
 def generate_linkedin_post(title, summary):
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash') 
+    # Yeni google-genai kütüphanesi kullanım formatı
+    client = genai.Client(api_key=GEMINI_API_KEY)
     
     prompt = f"""
     Sen endüstriyel bakım, üretim yönetimi ve Yapay Zeka entegrasyonu (Endüstri 4.0) alanında uzman, vizyoner bir profesyonelsin. 
@@ -38,7 +37,11 @@ def generate_linkedin_post(title, summary):
     Haber Özeti: {summary}
     """
     
-    response = model.generate_content(prompt)
+    # Yeni client çağrısı ve ücretsiz flash modeli
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt
+    )
     return response.text.strip()
 
 def share_on_linkedin(urn, text, link):
