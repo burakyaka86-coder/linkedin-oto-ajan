@@ -2,97 +2,52 @@ import os
 import requests
 import g4f
 from duckduckgo_search import DDGS
-import time
+import urllib.parse
 
-# LinkedIn Token ve Şirket ID (Gemini API'ye gerek yok, g4f kullanıyoruz)
-LINKEDIN_TOKEN = os.environ.get("LINKEDIN_TOKEN")
-COMPANY_ID = "106153442"
+MAKE_WEBHOOK_URL = "https://hook.eu1.make.com/q2bn0ph88q1qxu841sv9dhau8aql51gc"
 
-def internette_arastirma_yap(sorgu="Endüstri 4.0 ve Yapay Zeka güncel gelişmeler 2026"):
-    """DuckDuckGo üzerinden internette gerçek zamanlı araştırma yapar"""
-    print(f"İnternette araştırılıyor: {sorgu}")
-    haberler = []
+def internette_arastirma_yap():
     try:
         with DDGS() as ddgs:
-            # En son haberleri (son 24 saat/hafta) getirir
-            results = ddgs.news(sorgu, region="tr-tr", safesearch="off", timelimit="w")
+            results = ddgs.news("Endüstri 4.0 yapay zeka üretim yönetimi", region="tr-tr", timelimit="d")
             for r in results:
-                haberler.append({
-                    "baslik": r['title'],
-                    "ozet": r['body'],
-                    "link": r['url']
-                })
-                if len(haberler) >= 1: break # En güncel 1 tanesini alması yeterli
+                return r['title'], r['body'], r['url']
     except Exception as e:
         print(f"Araştırma hatası: {e}")
-    return haberler[0] if haberler else None
+    return None, None, None
 
-def vizyoner_yorum_olustur(haber_baslik, haber_ozet):
-    """Bulunan gelişmeyi GPT-4 altyapısıyla profesyonelce yorumlar"""
+def vizyoner_yorum_olustur(baslik, ozet):
     prompt = f"""
-    Sen endüstriyel bakım, üretim yönetimi ve Yapay Zeka (Endüstri 4.0) alanında dünya çapında vizyona sahip bir uzmansın. 
-    Aşağıdaki güncel gelişmeyi internetten buldum. Bu gelişmeyi analiz et ve LinkedIn şirket sayfan için 
-    takipçilerini dijital dönüşüme teşvik edecek, agresif, zeki ve vizyoner bir metne dönüştür. 
-    
-    HABER BAŞLIĞI: {haber_baslik}
-    HABER DETAYI: {haber_ozet}
-    
-    Yazım dili Türkçe olsun. Profesyonel bir üslup kullan. Sonuna 3-4 adet stratejik hashtag ekle.
+    Sen 'Companies That Value Employees' yöneticisisin. 
+    Aşağıdaki haberi vizyoner bir dille analiz et. 
+    Format: Giriş, Endüstri 4.0 Analizi, Kapanış Mesajı ve 3 Hashtag.
+    Haber: {baslik} - {ozet}
     """
-    
-    for attempt in range(3):
-        try:
-            response = g4f.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            if response and len(response) > 50:
-                return response.strip()
-        except:
-            print("YZ meşgul, 10 saniye sonra tekrar denenecek...")
-            time.sleep(10)
-    return None
+    try:
+        response = g4f.ChatCompletion.create(model="gpt-4", messages=[{"role": "user", "content": prompt}])
+        return response.strip()
+    except:
+        return None
 
-def linkedin_paylas(text, link):
-    """Şirket sayfasında paylaşım yapar"""
-    url = "https://api.linkedin.com/v2/ugcPosts"
-    headers = {
-        "Authorization": f"Bearer {LINKEDIN_TOKEN}",
-        "X-Restli-Protocol-Version": "2.0.0",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "author": f"urn:li:organization:{COMPANY_ID}",
-        "lifecycleState": "PUBLISHED",
-        "specificContent": {
-            "com.linkedin.ugc.ShareContent": {
-                "shareCommentary": {"text": text},
-                "shareMediaCategory": "ARTICLE",
-                "media": [{"status": "READY", "originalUrl": link}]
-            }
-        },
-        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
-    }
-    res = requests.post(url, headers=headers, json=payload)
-    if res.status_code == 201:
-        print("BAŞARILI: İnternetten araştırılan güncel konu paylaşıldı.")
-    else:
-        print(f"Hata: {res.text}")
+def ucretsiz_resim_uret(baslik):
+    # Habere uygun bir resim prompt'u oluşturup ücretsiz servisten link alıyoruz
+    prompt = f"Industrial Industry 4.0, Artificial Intelligence, factory of the future, high tech, professional digital art, {baslik}"
+    encoded_prompt = urllib.parse.quote(prompt)
+    image_url = f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&seed=42&model=flux"
+    return image_url
 
 if __name__ == "__main__":
-    print("Araştırmacı Ajan uyanıyor...")
-    
-    # Arama terimini istediğin gibi özelleştirebilirsin
-    guncel_gelisme = internette_arastirma_yap("Endüstri 4.0 üretim yönetimi yapay zeka inovasyon")
-    
-    if guncel_gelisme:
-        print(f"Bulunan konu: {guncel_gelisme['baslik']}")
-        yorum = vizyoner_yorum_olustur(guncel_gelisme['baslik'], guncel_gelisme['ozet'])
+    baslik, ozet, link = internette_arastirma_yap()
+    if baslik:
+        yorum = vizyoner_yorum_olustur(baslik, ozet)
+        resim_linki = ucretsiz_resim_uret(baslik)
         
         if yorum:
-            print("Yorum hazır, LinkedIn'e gönderiliyor...")
-            linkedin_paylas(yorum, guncel_gelisme['link'])
-        else:
-            print("Yorum oluşturulamadı.")
-    else:
-        print("İnternette güncel bir gelişme bulunamadı.")
+            # Make.com'a artık metinle birlikte üretilen resmin linkini de gönderiyoruz
+            payload = {
+                "metin": yorum,
+                "link": link,
+                "resim": resim_linki
+            }
+            requests.post(MAKE_WEBHOOK_URL, json=payload)
+            print("Metin ve ücretsiz görsel Make.com'a fırlatıldı!")
