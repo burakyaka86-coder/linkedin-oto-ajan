@@ -1,63 +1,68 @@
 import os
 import requests
-import feedparser
-from google import genai
+import g4f
+from duckduckgo_search import DDGS
+import time
 
-# Çevre Değişkenlerinden API Şifrelerini Çek
+# LinkedIn Token ve Şirket ID (Gemini API'ye gerek yok, g4f kullanıyoruz)
 LINKEDIN_TOKEN = os.environ.get("LINKEDIN_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+COMPANY_ID = "106153442"
 
-# Hedef Şirket Sayfasının ID'si
-COMPANY_ID = "106153442" 
-
-# Haber kaynağı (Küresel ve GitHub sunucularını engellemeyen bir teknoloji RSS'i)
-RSS_URL = "https://www.webtekno.com/rss.xml" 
-
-def get_latest_news():
-    """RSS kaynağından en son haberi çeker"""
+def internette_arastirma_yap(sorgu="Endüstri 4.0 ve Yapay Zeka güncel gelişmeler 2026"):
+    """DuckDuckGo üzerinden internette gerçek zamanlı araştırma yapar"""
+    print(f"İnternette araştırılıyor: {sorgu}")
+    haberler = []
     try:
-        feed = feedparser.parse(RSS_URL)
-        if feed.entries:
-            latest = feed.entries[0]
-            return latest.title, latest.description, latest.link
+        with DDGS() as ddgs:
+            # En son haberleri (son 24 saat/hafta) getirir
+            results = ddgs.news(sorgu, region="tr-tr", safesearch="off", timelimit="w")
+            for r in results:
+                haberler.append({
+                    "baslik": r['title'],
+                    "ozet": r['body'],
+                    "link": r['url']
+                })
+                if len(haberler) >= 1: break # En güncel 1 tanesini alması yeterli
     except Exception as e:
-        print(f"RSS Çekme Hatası: {e}")
-    return None, None, None
+        print(f"Araştırma hatası: {e}")
+    return haberler[0] if haberler else None
 
-def generate_linkedin_post(title, summary):
-    """Gemini ile haberi vizyoner bir LinkedIn gönderisine dönüştürür"""
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        
-        prompt = f"""
-        Sen endüstriyel bakım, üretim yönetimi ve Yapay Zeka entegrasyonu (Endüstri 4.0) alanında uzman, vizyoner bir profesyonelsin. 
-        Aşağıdaki teknoloji haberini oku ve yönettiğin şirket sayfası için profesyonel, vizyoner ve dikkat çekici bir LinkedIn gönderi metnine dönüştür. 
-        Metin Türkçe olsun, okuyucuyu dijital dönüşüm ve inovasyon üzerine düşündürsün ve sonuna 3-4 adet alakalı hashtag ekle.
-        
-        Haber Başlığı: {title}
-        Haber Özeti: {summary}
-        """
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Gemini API Hatası: {e}")
-        return "Yapay zeka metni oluşturamadı."
+def vizyoner_yorum_olustur(haber_baslik, haber_ozet):
+    """Bulunan gelişmeyi GPT-4 altyapısıyla profesyonelce yorumlar"""
+    prompt = f"""
+    Sen endüstriyel bakım, üretim yönetimi ve Yapay Zeka (Endüstri 4.0) alanında dünya çapında vizyona sahip bir uzmansın. 
+    Aşağıdaki güncel gelişmeyi internetten buldum. Bu gelişmeyi analiz et ve LinkedIn şirket sayfan için 
+    takipçilerini dijital dönüşüme teşvik edecek, agresif, zeki ve vizyoner bir metne dönüştür. 
+    
+    HABER BAŞLIĞI: {haber_baslik}
+    HABER DETAYI: {haber_ozet}
+    
+    Yazım dili Türkçe olsun. Profesyonel bir üslup kullan. Sonuna 3-4 adet stratejik hashtag ekle.
+    """
+    
+    for attempt in range(3):
+        try:
+            response = g4f.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            if response and len(response) > 50:
+                return response.strip()
+        except:
+            print("YZ meşgul, 10 saniye sonra tekrar denenecek...")
+            time.sleep(10)
+    return None
 
-def share_on_company_page(org_id, text, link):
-    """Metni ve haberi şirket sayfası adına LinkedIn'de paylaşır"""
+def linkedin_paylas(text, link):
+    """Şirket sayfasında paylaşım yapar"""
     url = "https://api.linkedin.com/v2/ugcPosts"
     headers = {
         "Authorization": f"Bearer {LINKEDIN_TOKEN}",
         "X-Restli-Protocol-Version": "2.0.0",
         "Content-Type": "application/json"
     }
-    
     payload = {
-        "author": f"urn:li:organization:{org_id}",
+        "author": f"urn:li:organization:{COMPANY_ID}",
         "lifecycleState": "PUBLISHED",
         "specificContent": {
             "com.linkedin.ugc.ShareContent": {
@@ -68,27 +73,26 @@ def share_on_company_page(org_id, text, link):
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
     }
-    
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 201:
-        print("Harika! Gönderi şirket sayfasında başarıyla paylaşıldı.")
+    res = requests.post(url, headers=headers, json=payload)
+    if res.status_code == 201:
+        print("BAŞARILI: İnternetten araştırılan güncel konu paylaşıldı.")
     else:
-        print("LİNKEDİN PAYLAŞIM HATASI!!! Lütfen aşağıdaki detayı kontrol et:")
-        print(response.text)
+        print(f"Hata: {res.text}")
 
 if __name__ == "__main__":
-    print("Otonom Ajan uyanıyor...")
+    print("Araştırmacı Ajan uyanıyor...")
     
-    news_title, news_desc, news_link = get_latest_news()
+    # Arama terimini istediğin gibi özelleştirebilirsin
+    guncel_gelisme = internette_arastirma_yap("Endüstri 4.0 üretim yönetimi yapay zeka inovasyon")
     
-    if news_title:
-        print(f"Haber bulundu: {news_title}")
-        post_text = generate_linkedin_post(news_title, news_desc)
+    if guncel_gelisme:
+        print(f"Bulunan konu: {guncel_gelisme['baslik']}")
+        yorum = vizyoner_yorum_olustur(guncel_gelisme['baslik'], guncel_gelisme['ozet'])
         
-        if post_text and post_text != "Yapay zeka metni oluşturamadı.":
-            print("Gemini metni hazırladı, LinkedIn şirket sayfasına gönderiliyor...")
-            share_on_company_page(COMPANY_ID, post_text, news_link)
+        if yorum:
+            print("Yorum hazır, LinkedIn'e gönderiliyor...")
+            linkedin_paylas(yorum, guncel_gelisme['link'])
         else:
-            print("Metin oluşturulamadığı için paylaşım iptal edildi.")
+            print("Yorum oluşturulamadı.")
     else:
-        print("Yeni haber bulunamadı veya RSS kaynağına ulaşılamadı.")
+        print("İnternette güncel bir gelişme bulunamadı.")
